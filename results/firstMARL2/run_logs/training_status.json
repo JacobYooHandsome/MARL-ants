@@ -1,0 +1,38 @@
+{
+    "AntBehavior": {
+        "checkpoints": [
+            {
+                "steps": 499968,
+                "file_path": "results/firstMARL2/AntBehavior/AntBehavior-499968.onnx",
+                "reward": null,
+                "creation_time": 1774042128.6564312,
+                "auxillary_file_paths": [
+                    "results/firstMARL2/AntBehavior/AntBehavior-499968.pt"
+                ]
+            },
+            {
+                "steps": 500352,
+                "file_path": "results/firstMARL2/AntBehavior/AntBehavior-500352.onnx",
+                "reward": null,
+                "creation_time": 1774042128.714695,
+                "auxillary_file_paths": [
+                    "results/firstMARL2/AntBehavior/AntBehavior-500352.pt"
+                ]
+            }
+        ],
+        "final_checkpoint": {
+            "steps": 500352,
+            "file_path": "results/firstMARL2/AntBehavior.onnx",
+            "reward": null,
+            "creation_time": 1774042128.714695,
+            "auxillary_file_paths": [
+                "results/firstMARL2/AntBehavior/AntBehavior-500352.pt"
+            ]
+        }
+    },
+    "metadata": {
+        "stats_format_version": "0.3.0",
+        "mlagents_version": "1.2.0.dev0",
+        "torch_version": "2.1.1"
+    }
+}

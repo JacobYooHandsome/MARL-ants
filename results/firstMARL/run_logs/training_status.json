@@ -1,0 +1,47 @@
+{
+    "AntBehavior": {
+        "checkpoints": [
+            {
+                "steps": 382932,
+                "file_path": "results/firstMARL/AntBehavior/AntBehavior-382932.onnx",
+                "reward": null,
+                "creation_time": 1774038904.9780428,
+                "auxillary_file_paths": [
+                    "results/firstMARL/AntBehavior/AntBehavior-382932.pt"
+                ]
+            },
+            {
+                "steps": 499990,
+                "file_path": "results/firstMARL/AntBehavior/AntBehavior-499990.onnx",
+                "reward": null,
+                "creation_time": 1774039142.483746,
+                "auxillary_file_paths": [
+                    "results/firstMARL/AntBehavior/AntBehavior-499990.pt"
+                ]
+            },
+            {
+                "steps": 500310,
+                "file_path": "results/firstMARL/AntBehavior/AntBehavior-500310.onnx",
+                "reward": null,
+                "creation_time": 1774039142.5424588,
+                "auxillary_file_paths": [
+                    "results/firstMARL/AntBehavior/AntBehavior-500310.pt"
+                ]
+            }
+        ],
+        "final_checkpoint": {
+            "steps": 500310,
+            "file_path": "results/firstMARL/AntBehavior.onnx",
+            "reward": null,
+            "creation_time": 1774039142.5424588,
+            "auxillary_file_paths": [
+                "results/firstMARL/AntBehavior/AntBehavior-500310.pt"
+            ]
+        }
+    },
+    "metadata": {
+        "stats_format_version": "0.3.0",
+        "mlagents_version": "1.2.0.dev0",
+        "torch_version": "2.1.1"
+    }
+}
