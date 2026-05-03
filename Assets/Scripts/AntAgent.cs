@@ -300,11 +300,13 @@ public class AntAgent : Agent
         else
         {
             bool ground = false;
+            bool wall = false;
 
             for (int i = 0; i < collision.contactCount; i++)
             {
                 Vector2 normal = collision.GetContact(i).normal;
                 ground |= normal.y > 0.5f;
+                wall |= Mathf.Abs(normal.x) > 0.5f && normal.y < 0.5f;
             }
 
             UpdateContactSet(groundContacts, other, ground);
