@@ -24,6 +24,7 @@ public class AntAgent : Agent
     private bool facingRight = true;
     private bool canStartClimbing = true;
     private bool climbHasLeftGround = false;
+    [SerializeField, Min(0f)] private float supportVerticalMargin = 0.05f;
 
 
     [Header("Neighbor Observations")]
@@ -37,13 +38,22 @@ public class AntAgent : Agent
     [Header("Rewards")]
     public float stepPenalty = -0.0005f;
     public float progressRewardScale = 0.1f;
-    public float foodReward = 1f;
+
+    [Header("Visual Feedback")]
+    [SerializeField] private Color supportRewardGlowColor = Color.green;
+    [SerializeField, Min(0f)] private float supportRewardGlowDuration = 0.1f;
 
     private Rigidbody2D rb;
     private float previousDistanceToFood;
     private int antContactCount = 0;
+    private bool isLockedVisualState = false;
+    private float supportRewardGlowEndTime = -1f;
+    private Collider2D lockedContact;
+    private FixedJoint2D attachmentJoint;
     private readonly HashSet<Collider2D> groundContacts = new HashSet<Collider2D>();
+    private readonly HashSet<Collider2D> surfaceContacts = new HashSet<Collider2D>();
     private readonly HashSet<Collider2D> antContacts = new HashSet<Collider2D>();
+    private readonly HashSet<AntAgent> supportCheckVisited = new HashSet<AntAgent>();
 
     public bool IsGrounded => isGrounded;
     public bool IsTouchingAnt => touchingAnt;
@@ -59,6 +69,7 @@ public class AntAgent : Agent
         rb.angularVelocity = 0f;
         transform.rotation = Quaternion.identity;
         spriteRenderer = GetComponent<SpriteRenderer>();
+        ConfigureAttachmentJoint();
     }
 
     public void Setup(AntArenaController controller, Transform food)
@@ -70,6 +81,11 @@ public class AntAgent : Agent
     public override void OnEpisodeBegin()
     {
         ResetAgentState();
+    }
+
+    private void Update()
+    {
+        ApplyVisualState();
     }
 
     public override void CollectObservations(VectorSensor sensor)
@@ -124,9 +140,11 @@ public class AntAgent : Agent
             facingRight = true;
         }
 
-        bool contactingAnt = touchingAnt && currentAntContact != null;
-        int wantsAttach = discreteActions[0];
-        bool isLocked = contactingAnt && wantsAttach == 1;
+        bool wantsAttach = discreteActions[0] == 1;
+        Collider2D attachmentContact = GetAttachmentContact();
+        Collider2D climbContact = GetSupportedAntContact();
+        bool isLocked = wantsAttach && TryAttachToContact(attachmentContact);
+        isLockedVisualState = isLocked;
         bool landedFromClimb = isClimbing && climbHasLeftGround && isGrounded;
 
         rb.constraints = RigidbodyConstraints2D.FreezeRotation;
@@ -140,17 +158,14 @@ public class AntAgent : Agent
             canStartClimbing = false;
         }
 
-        bool shouldClimb = contactingAnt && canStartClimbing && !landedFromClimb;
+        bool shouldClimb = climbContact != null && canStartClimbing && !landedFromClimb;
 
-        // Attach locks in place, unlocked ant contact climbs, ground contact after climbing returns to normal walking.
+        // Attach follows a contacted ant, unlocked ant contact climbs, ground contact after climbing returns to normal walking.
         if (isLocked) {
             isClimbing = false;
-            rb.linearVelocity = Vector2.zero;
             rb.angularVelocity = 0f;
-            rb.constraints = RigidbodyConstraints2D.FreezePosition |
-                             RigidbodyConstraints2D.FreezeRotation;
-            spriteRenderer.color = Color.blue;
         } else if (shouldClimb) {
+            ReleaseAttachment();
             if (!isClimbing)
             {
                 isClimbing = true;
@@ -164,7 +179,7 @@ public class AntAgent : Agent
             rb.linearVelocity = Vector2.zero;
             rb.angularVelocity = 0f;
 
-            Vector3 otherCenter = currentAntContact.bounds.center;
+            Vector3 otherCenter = climbContact.bounds.center;
             Vector3 offset = transform.position - otherCenter;
 
             float angleDelta = -moveX * orbitDegreesPerSecond * Time.fixedDeltaTime;
@@ -174,16 +189,15 @@ public class AntAgent : Agent
             transform.rotation = Quaternion.identity;
         }
         else if (isGrounded) {
+            ReleaseAttachment();
             isClimbing = false;
             rb.linearVelocity = new Vector2(moveX * maxSpeed, rb.linearVelocity.y);
         } else {
+            ReleaseAttachment();
             isClimbing = false;
         }
 
-        if (!isLocked)
-        {
-            spriteRenderer.color = Color.red;
-        }
+        ApplyVisualState();
 
         AddReward(stepPenalty);
 
@@ -195,7 +209,17 @@ public class AntAgent : Agent
         // Rewards the act of moving closer
         float currentDistance = Vector2.Distance(transform.position, foodTransform.position);
         float progress = previousDistanceToFood - currentDistance;
-        AddReward(progress * progressRewardScale);
+        float progressReward = progress * progressRewardScale;
+
+        if (arena != null)
+        {
+            arena.NotifyPositiveProgress(this, progressReward);
+        }
+        else
+        {
+            AddReward(progressReward);
+        }
+
         previousDistanceToFood = currentDistance;
     }
 
@@ -219,8 +243,12 @@ public class AntAgent : Agent
         canStartClimbing = true;
         climbHasLeftGround = false;
         currentAntContact = null;
+        ReleaseAttachment();
         antContactCount = 0;
+        isLockedVisualState = false;
+        supportRewardGlowEndTime = -1f;
         groundContacts.Clear();
+        surfaceContacts.Clear();
         antContacts.Clear();
 
         if (rb == null)
@@ -232,6 +260,13 @@ public class AntAgent : Agent
         transform.rotation = Quaternion.identity;
 
         RefreshDistanceToFood();
+        ApplyVisualState();
+    }
+
+    public void ShowSupportRewardGlow()
+    {
+        supportRewardGlowEndTime = Time.time + supportRewardGlowDuration;
+        ApplyVisualState();
     }
 
     public override void Heuristic(in ActionBuffers actionsOut)
@@ -245,10 +280,17 @@ public class AntAgent : Agent
 
     private void OnTriggerEnter2D(Collider2D other)
     {
-        if (arena != null && IsAssignedFood(other))
+        if (IsAssignedFood(other))
         {
-            AddReward(foodReward);
-            arena.NotifyFoodReached(this);
+            if (arena != null)
+            {
+                arena.NotifyFoodReached(this);
+            }
+            else
+            {
+                Debug.LogWarning($"{name} reached food, but no AntArenaController is assigned to provide the food reward.");
+            }
+
             // Debug.Log($"Ant reached food!");
         }
     }
@@ -267,11 +309,17 @@ public class AntAgent : Agent
     {
         Collider2D other = collision.collider;
         groundContacts.Remove(other);
+        surfaceContacts.Remove(other);
         antContacts.Remove(other);
 
         if (other == currentAntContact)
         {
             currentAntContact = GetAnyAntContact();
+        }
+
+        if (other == lockedContact)
+        {
+            ReleaseAttachment();
         }
 
         UpdateContactFlags();
@@ -300,16 +348,16 @@ public class AntAgent : Agent
         else
         {
             bool ground = false;
-            bool wall = false;
+            bool surface = collision.contactCount > 0;
 
             for (int i = 0; i < collision.contactCount; i++)
             {
                 Vector2 normal = collision.GetContact(i).normal;
                 ground |= normal.y > 0.5f;
-                wall |= Mathf.Abs(normal.x) > 0.5f && normal.y < 0.5f;
             }
 
             UpdateContactSet(groundContacts, other, ground);
+            UpdateContactSet(surfaceContacts, other, surface);
         }
 
         UpdateContactFlags();
@@ -320,7 +368,7 @@ public class AntAgent : Agent
         isGrounded = groundContacts.Count > 0;
         touchingAnt = antContacts.Count > 0;
         antContactCount = antContacts.Count;
-        contactCount = groundContacts.Count + antContacts.Count;
+        contactCount = surfaceContacts.Count + antContacts.Count;
         contact = contactCount > 0;
 
         if (!touchingAnt)
@@ -329,6 +377,11 @@ public class AntAgent : Agent
             isClimbing = false;
             canStartClimbing = true;
             climbHasLeftGround = false;
+        }
+
+        if (!contact)
+        {
+            ReleaseAttachment();
         }
     }
 
@@ -352,6 +405,222 @@ public class AntAgent : Agent
         }
 
         return null;
+    }
+
+    private Collider2D GetAttachmentContact()
+    {
+        if (IsValidAttachmentContact(lockedContact))
+        {
+            return lockedContact;
+        }
+
+        if (IsValidAttachmentContact(currentAntContact))
+        {
+            return currentAntContact;
+        }
+
+        foreach (Collider2D antContact in antContacts)
+        {
+            if (IsValidAttachmentContact(antContact))
+            {
+                return antContact;
+            }
+        }
+
+        return null;
+    }
+
+    private Collider2D GetSupportedAntContact()
+    {
+        if (IsSupportedAntContact(currentAntContact))
+        {
+            return currentAntContact;
+        }
+
+        foreach (Collider2D antContact in antContacts)
+        {
+            if (IsSupportedAntContact(antContact))
+            {
+                return antContact;
+            }
+        }
+
+        return null;
+    }
+
+    private bool IsSupportedAntContact(Collider2D contactCollider)
+    {
+        AntAgent otherAnt = GetSameArenaAnt(contactCollider);
+        return otherAnt != null && otherAnt.HasGroundSupport();
+    }
+
+    private bool HasGroundSupport()
+    {
+        supportCheckVisited.Clear();
+        return HasGroundSupport(supportCheckVisited);
+    }
+
+    private bool HasGroundSupport(HashSet<AntAgent> visited)
+    {
+        if (isGrounded)
+        {
+            return true;
+        }
+
+        if (!visited.Add(this))
+        {
+            return false;
+        }
+
+        foreach (Collider2D antContact in antContacts)
+        {
+            AntAgent candidateSupporter = GetSameArenaAnt(antContact);
+            if (candidateSupporter == null || !candidateSupporter.IsLowerThan(this))
+            {
+                continue;
+            }
+
+            if (candidateSupporter.HasGroundSupport(visited))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool IsLowerThan(AntAgent dependentAnt)
+    {
+        return dependentAnt != null &&
+               transform.position.y <= dependentAnt.transform.position.y - supportVerticalMargin;
+    }
+
+    private bool TryAttachToContact(Collider2D contactCollider)
+    {
+        if (!IsValidAttachmentContact(contactCollider))
+        {
+            ReleaseAttachment();
+            return false;
+        }
+
+        if (attachmentJoint == null)
+        {
+            ConfigureAttachmentJoint();
+        }
+
+        if (attachmentJoint == null)
+        {
+            return false;
+        }
+
+        if (attachmentJoint.enabled && lockedContact == contactCollider)
+        {
+            return true;
+        }
+
+        Rigidbody2D connectedBody = contactCollider.attachedRigidbody;
+        if (connectedBody == rb)
+        {
+            ReleaseAttachment();
+            return false;
+        }
+
+        Vector2 anchorWorldPosition = contactCollider.ClosestPoint(rb.position);
+        if ((anchorWorldPosition - rb.position).sqrMagnitude < 0.0001f)
+        {
+            anchorWorldPosition = rb.position;
+        }
+
+        attachmentJoint.enabled = false;
+        attachmentJoint.connectedBody = connectedBody;
+        attachmentJoint.anchor = transform.InverseTransformPoint(anchorWorldPosition);
+        attachmentJoint.connectedAnchor = connectedBody != null
+            ? connectedBody.transform.InverseTransformPoint(anchorWorldPosition)
+            : anchorWorldPosition;
+        attachmentJoint.enabled = true;
+        lockedContact = contactCollider;
+
+        return true;
+    }
+
+    private void ConfigureAttachmentJoint()
+    {
+        if (attachmentJoint == null)
+        {
+            attachmentJoint = GetComponent<FixedJoint2D>();
+        }
+
+        if (attachmentJoint == null)
+        {
+            attachmentJoint = gameObject.AddComponent<FixedJoint2D>();
+        }
+
+        attachmentJoint.autoConfigureConnectedAnchor = false;
+        attachmentJoint.enableCollision = true;
+        attachmentJoint.enabled = false;
+    }
+
+    private void ReleaseAttachment()
+    {
+        if (attachmentJoint != null)
+        {
+            attachmentJoint.enabled = false;
+            attachmentJoint.connectedBody = null;
+        }
+
+        lockedContact = null;
+    }
+
+    private bool IsValidAttachmentContact(Collider2D contactCollider)
+    {
+        if (contactCollider == null)
+        {
+            return false;
+        }
+
+        return contactCollider.CompareTag("agent") &&
+               antContacts.Contains(contactCollider) &&
+               IsSameArenaAnt(contactCollider);
+    }
+
+    public void GetTouchingAnts(List<AntAgent> touchingAnts)
+    {
+        touchingAnts.Clear();
+
+        foreach (Collider2D antContact in antContacts)
+        {
+            if (!IsSameArenaAnt(antContact))
+            {
+                continue;
+            }
+
+            AntAgent otherAnt = antContact.GetComponentInParent<AntAgent>();
+            if (otherAnt != null)
+            {
+                touchingAnts.Add(otherAnt);
+            }
+        }
+    }
+
+    private void ApplyVisualState()
+    {
+        if (spriteRenderer == null)
+        {
+            spriteRenderer = GetComponent<SpriteRenderer>();
+            if (spriteRenderer == null)
+            {
+                return;
+            }
+        }
+
+        if (Time.time < supportRewardGlowEndTime)
+        {
+            spriteRenderer.color = supportRewardGlowColor;
+        }
+        else
+        {
+            spriteRenderer.color = isLockedVisualState ? Color.blue : Color.red;
+        }
     }
 
     public int GetNearbyAntCount()
@@ -383,13 +652,20 @@ public class AntAgent : Agent
 
     private bool IsSameArenaAnt(Collider2D other)
     {
+        return GetSameArenaAnt(other) != null;
+    }
+
+    private AntAgent GetSameArenaAnt(Collider2D other)
+    {
         if (arena == null || other == null || !other.CompareTag("agent"))
         {
-            return false;
+            return null;
         }
 
         AntAgent otherAnt = other.GetComponentInParent<AntAgent>();
-        return otherAnt != null && otherAnt != this && otherAnt.arena == arena;
+        return otherAnt != null && otherAnt != this && otherAnt.arena == arena
+            ? otherAnt
+            : null;
     }
 
     private void OnDrawGizmos()

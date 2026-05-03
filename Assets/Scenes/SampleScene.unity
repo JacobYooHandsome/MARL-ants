@@ -406,6 +406,14 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 6746449219165719934, guid: 21429558a1fd0463297ecd02d553d74e, type: 3}
+      propertyPath: rewardMode
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7796775907952266351, guid: 21429558a1fd0463297ecd02d553d74e, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 1.5
+      objectReference: {fileID: 0}
     - target: {fileID: 8404045697079338337, guid: 21429558a1fd0463297ecd02d553d74e, type: 3}
       propertyPath: m_Name
       value: ml-environment (4)
