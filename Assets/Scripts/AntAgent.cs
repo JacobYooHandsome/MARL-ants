@@ -142,7 +142,7 @@ public class AntAgent : Agent
 
         bool wantsAttach = discreteActions[0] == 1;
         Collider2D attachmentContact = GetAttachmentContact();
-        Collider2D climbContact = GetSupportedAntContact();
+        Collider2D climbContact = touchingAnt ? currentAntContact : null;
         bool isLocked = wantsAttach && TryAttachToContact(attachmentContact);
         isLockedVisualState = isLocked;
         bool landedFromClimb = isClimbing && climbHasLeftGround && isGrounded;

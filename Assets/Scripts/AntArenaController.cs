@@ -43,7 +43,7 @@ public class AntArenaController : MonoBehaviour
 
     [Header("Experiment")]
     public RewardMode rewardMode = RewardMode.BasePpo;
-    [SerializeField, Min(0f)] private float foodReward = 1f;
+    [SerializeField, Min(0f)] private float foodReward = 10f;
     [SerializeField, Min(0f)] private float supportVerticalMargin = 0.05f;
     private int maxEnvironmentSteps = 10000;
     private int episodeStepCount = 0;

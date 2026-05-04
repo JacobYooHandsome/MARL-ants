@@ -478,7 +478,7 @@ MonoBehaviour:
   maxSpawnX: 4
   maxSpawnAttemptsPerAnt: 50
   rewardMode: 0
-  foodReward: 1
+  foodReward: 10
 --- !u!1 &7570554542341212942
 GameObject:
   m_ObjectHideFlags: 0

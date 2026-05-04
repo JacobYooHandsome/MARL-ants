@@ -407,6 +407,10 @@ PrefabInstance:
       value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 6746449219165719934, guid: 21429558a1fd0463297ecd02d553d74e, type: 3}
+      propertyPath: foodReward
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 6746449219165719934, guid: 21429558a1fd0463297ecd02d553d74e, type: 3}
       propertyPath: rewardMode
       value: 0
       objectReference: {fileID: 0}
